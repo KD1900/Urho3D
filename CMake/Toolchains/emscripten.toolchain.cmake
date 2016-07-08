@@ -22,17 +22,18 @@
 
 get_property (IN_TRY_COMPILE GLOBAL PROPERTY IN_TRY_COMPILE)
 
-# Save the initial values of CC and CXX environment variables
+# Prevent critical variables from changing after the initial configuration
 if (CMAKE_CROSSCOMPILING)
-    set (SAVED_CC $ENV{CC} CACHE INTERNAL "Initial value for CC")
-    set (SAVED_CXX $ENV{CXX} CACHE INTERNAL "Initial value for CXX")
     set (SAVED_EMSCRIPTEN_ROOT_PATH ${EMSCRIPTEN_ROOT_PATH} CACHE INTERNAL "Initial value for EMSCRIPTEN_ROOT_PATH")
     set (SAVED_EMSCRIPTEN_SYSROOT ${EMSCRIPTEN_SYSROOT} CACHE INTERNAL "Initial value for EMSCRIPTEN_SYSROOT")
+    # Save the initial values of CC and CXX environment variables
+    set (SAVED_CC $ENV{CC} CACHE INTERNAL "Initial value for CC")
+    set (SAVED_CXX $ENV{CXX} CACHE INTERNAL "Initial value for CXX")
     return ()
 elseif (NOT IN_TRY_COMPILE AND ((SAVED_EMSCRIPTEN_ROOT_PATH AND NOT SAVED_EMSCRIPTEN_ROOT_PATH STREQUAL EMSCRIPTEN_ROOT_PATH) OR (SAVED_EMSCRIPTEN_SYSROOT AND NOT SAVED_EMSCRIPTEN_SYSROOT STREQUAL EMSCRIPTEN_SYSROOT)))
     set (EMSCRIPTEN_ROOT_PATH ${SAVED_EMSCRIPTEN_ROOT_PATH} CACHE STRING "Root path to Emscripten cross-compiler tools (Emscripten only)" FORCE)
     set (EMSCRIPTEN_SYSROOT ${SAVED_EMSCRIPTEN_SYSROOT} CACHE PATH "Path to Emscripten system root (Emscripten only)" FORCE)
-    message (FATAL_ERROR "EMSCRIPTEN_ROOT_PATH and/or EMSCRIPTEN_SYSROOT cannot be changed after the initial configuration/generation. "
+    message (FATAL_ERROR "EMSCRIPTEN_ROOT_PATH and EMSCRIPTEN_SYSROOT cannot be changed after the initial configuration/generation. "
         "If you wish to change that then the build tree would have to be regenerated from scratch. Auto reverting to its initial value.")
 endif ()
 
@@ -41,15 +42,12 @@ if (CMAKE_TOOLCHAIN_FILE)
     mark_as_advanced (CMAKE_TOOLCHAIN_FILE)
 endif ()
 
-# this one is important
+# This one is important
 set (CMAKE_SYSTEM_NAME Linux)
-# this one not so much
+# This one not so much
 set (CMAKE_SYSTEM_VERSION 1)
 
-# specify the cross compiler
-if (CMAKE_HOST_WIN32)
-    set (TOOL_EXT .bat)
-endif ()
+# System root
 if (IN_TRY_COMPILE)
     set (EMSCRIPTEN_ROOT_PATH $ENV{EMSCRIPTEN_ROOT_PATH})
 else ()
@@ -60,12 +58,38 @@ else ()
             file (TO_CMAKE_PATH $ENV{EMSCRIPTEN} EMSCRIPTEN_ROOT_PATH)
         endif ()
     endif ()
+    set (EMSCRIPTEN_ROOT_PATH ${EMSCRIPTEN_ROOT_PATH} CACHE STRING "Root path to Emscripten cross-compiler tools (Emscripten only)")
     if (NOT EXISTS ${EMSCRIPTEN_ROOT_PATH}/emcc${TOOL_EXT})
         message (FATAL_ERROR "Could not find Emscripten cross compilation tool. "
             "Use EMSCRIPTEN_ROOT_PATH environment variable or build option to specify the location of the toolchain. "
             "Or use the canonical EMSCRIPTEN environment variable by calling emsdk_env script.")
     endif ()
-    set (EMSCRIPTEN_ROOT_PATH ${EMSCRIPTEN_ROOT_PATH} CACHE STRING "Root path to Emscripten cross-compiler tools (Emscripten only)")
+endif ()
+if (IN_TRY_COMPILE)
+    set (EMSCRIPTEN_SYSROOT $ENV{EMSCRIPTEN_SYSROOT})
+else ()
+    if (NOT EMSCRIPTEN_SYSROOT)
+        if (DEFINED ENV{EMSCRIPTEN_SYSROOT})
+            file (TO_CMAKE_PATH $ENV{EMSCRIPTEN_SYSROOT} EMSCRIPTEN_SYSROOT)
+        else ()
+            set (EMSCRIPTEN_SYSROOT ${EMSCRIPTEN_ROOT_PATH}/system)
+        endif ()
+    endif ()
+    set (EMSCRIPTEN_SYSROOT ${EMSCRIPTEN_SYSROOT} CACHE PATH "Path to Emscripten system root (Emscripten only)")
+    if (NOT EXISTS ${EMSCRIPTEN_SYSROOT})
+        message (FATAL_ERROR "Could not find Emscripten system root. "
+            "Use EMSCRIPTEN_SYSROOT environment variable or build option to specify the location of system root.")
+    endif ()
+endif ()
+set (CMAKE_SYSROOT ${EMSCRIPTEN_SYSROOT})
+# Only search libraries and headers in sysroot
+set (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set (CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set (CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+# Cross compiler tools
+if (CMAKE_HOST_WIN32)
+    set (TOOL_EXT .bat)
 endif ()
 if (IN_TRY_COMPILE)
     set (EMSCRIPTEN_EMCC_VERSION $ENV{EMSCRIPTEN_EMCC_VERSION})
@@ -119,30 +143,6 @@ set (CMAKE_LINKER       ${EMSCRIPTEN_ROOT_PATH}/emlink.py           CACHE PATH "
 set (EMRUN              ${EMSCRIPTEN_ROOT_PATH}/emrun${TOOL_EXT}    CACHE PATH "emrun")
 set (EMPACKAGER         python ${EMSCRIPTEN_ROOT_PATH}/tools/file_packager.py CACHE PATH "file_packager.py")
 set (EMBUILDER          python ${EMSCRIPTEN_ROOT_PATH}/embuilder.py CACHE PATH "embuilder.py")
-
-# specify the system root
-if (IN_TRY_COMPILE)
-    set (EMSCRIPTEN_SYSROOT $ENV{EMSCRIPTEN_SYSROOT})
-else ()
-    if (NOT EMSCRIPTEN_SYSROOT)
-        if (DEFINED ENV{EMSCRIPTEN_SYSROOT})
-            file (TO_CMAKE_PATH $ENV{EMSCRIPTEN_SYSROOT} EMSCRIPTEN_SYSROOT)
-        else ()
-            set (EMSCRIPTEN_SYSROOT ${EMSCRIPTEN_ROOT_PATH}/system)
-        endif ()
-    endif ()
-    if (NOT EXISTS ${EMSCRIPTEN_SYSROOT})
-        message (FATAL_ERROR "Could not find Emscripten system root. "
-            "Use EMSCRIPTEN_SYSROOT environment variable or build option to specify the location of system root.")
-    endif ()
-    set (EMSCRIPTEN_SYSROOT ${EMSCRIPTEN_SYSROOT} CACHE PATH "Path to Emscripten system root (Emscripten only)")
-endif ()
-set (CMAKE_SYSROOT ${EMSCRIPTEN_SYSROOT})
-
-# only search libraries and headers in the target directories
-set (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set (CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set (CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 # Still perform the compiler checks except for those stated otherwise below
 foreach (LANG C CXX)

@@ -22,17 +22,18 @@
 
 get_property (IN_TRY_COMPILE GLOBAL PROPERTY IN_TRY_COMPILE)
 
-# Save the initial values of CC and CXX environment variables
+# Prevent critical variables from changing after the initial configuration
 if (CMAKE_CROSSCOMPILING)
+    set (SAVED_RPI_SYSROOT ${RPI_SYSROOT} CACHE INTERNAL "Initial value for RPI_SYSROOT")
+    set (SAVED_RPI_PREFIX ${RPI_PREFIX} CACHE INTERNAL "Initial value for RPI_PREFIX")
+    # Save the initial values of CC and CXX environment variables
     set (SAVED_CC $ENV{CC} CACHE INTERNAL "Initial value for CC")
     set (SAVED_CXX $ENV{CXX} CACHE INTERNAL "Initial value for CXX")
-    set (SAVED_RPI_PREFIX ${RPI_PREFIX} CACHE INTERNAL "Initial value for RPI_PREFIX")
-    set (SAVED_RPI_SYSROOT ${RPI_SYSROOT} CACHE INTERNAL "Initial value for RPI_SYSROOT")
     return ()
-elseif (NOT IN_TRY_COMPILE AND ((SAVED_RPI_PREFIX AND NOT SAVED_RPI_PREFIX STREQUAL RPI_PREFIX) OR (SAVED_RPI_SYSROOT AND NOT SAVED_RPI_SYSROOT STREQUAL RPI_SYSROOT)))
-    set (RPI_PREFIX ${SAVED_RPI_PREFIX} CACHE STRING "Prefix path to Raspberry Pi cross-compiler tools (RPI cross-compiling build only)" FORCE)
+elseif (NOT IN_TRY_COMPILE AND ((SAVED_RPI_SYSROOT AND NOT SAVED_RPI_SYSROOT STREQUAL RPI_SYSROOT) OR (SAVED_RPI_PREFIX AND NOT SAVED_RPI_PREFIX STREQUAL RPI_PREFIX)))
     set (RPI_SYSROOT ${SAVED_RPI_SYSROOT} CACHE PATH "Path to Raspberry Pi system root (RPI cross-compiling build only)" FORCE)
-    message (FATAL_ERROR "RPI_PREFIX and/or RPI_SYSROOT cannot be changed after the initial configuration/generation. "
+    set (RPI_PREFIX ${SAVED_RPI_PREFIX} CACHE STRING "Prefix path to Raspberry Pi cross-compiler tools (RPI cross-compiling build only)" FORCE)
+    message (FATAL_ERROR "RPI_SYSROOT and RPI_PREFIX cannot be changed after the initial configuration/generation. "
         "If you wish to change that then the build tree would have to be regenerated from scratch. Auto reverting to its initial value.")
 endif ()
 
@@ -41,24 +42,43 @@ if (CMAKE_TOOLCHAIN_FILE)
     mark_as_advanced (CMAKE_TOOLCHAIN_FILE)
 endif ()
 
-# this one is important
+# This one is important
 set (CMAKE_SYSTEM_NAME Linux)
-# this one not so much
+# This one not so much
 set (CMAKE_SYSTEM_PROCESSOR arm)
 set (CMAKE_SYSTEM_VERSION 1)
 
-# specify the cross compiler
+# System root
+if (IN_TRY_COMPILE)
+    set (RPI_SYSROOT $ENV{RPI_SYSROOT})
+else ()
+    if (NOT RPI_SYSROOT AND DEFINED ENV{RPI_SYSROOT})
+        file (TO_CMAKE_PATH $ENV{RPI_SYSROOT} RPI_SYSROOT)
+    endif ()
+    set (RPI_SYSROOT ${RPI_SYSROOT} CACHE PATH "Path to Raspberry Pi system root (RPI cross-compiling build only)")
+    if (NOT EXISTS ${RPI_SYSROOT})
+        message (FATAL_ERROR "Could not find Raspberry Pi system root. "
+            "Use RPI_SYSROOT environment variable or build option to specify the location of system root.")
+    endif ()
+endif ()
+set (CMAKE_SYSROOT ${RPI_SYSROOT})
+# Only search libraries and headers in sysroot
+set (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set (CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set (CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+# Cross compiler tools
 if (IN_TRY_COMPILE)
     set (RPI_PREFIX $ENV{RPI_PREFIX})
 else ()
     if (NOT RPI_PREFIX AND DEFINED ENV{RPI_PREFIX})
         file (TO_CMAKE_PATH $ENV{RPI_PREFIX} RPI_PREFIX)
     endif ()
+    set (RPI_PREFIX ${RPI_PREFIX} CACHE STRING "Prefix path to Raspberry Pi cross-compiler tools (RPI cross-compiling build only)")
     if (NOT EXISTS ${RPI_PREFIX}-gcc)
         message (FATAL_ERROR "Could not find Raspberry Pi cross compilation tool. "
             "Use RPI_PREFIX environment variable or build option to specify the location of the toolchain.")
     endif ()
-    set (RPI_PREFIX ${RPI_PREFIX} CACHE STRING "Prefix path to Raspberry Pi cross-compiler tools (RPI cross-compiling build only)")
 endif ()
 if (IN_TRY_COMPILE)
     set (RPI_COMPILER_PREFIX $ENV{RPI_COMPILER_PREFIX})
@@ -101,26 +121,6 @@ set (CMAKE_NM           ${RPI_PREFIX}-nm           CACHE PATH "nm")
 set (CMAKE_OBJCOPY      ${RPI_PREFIX}-objcopy      CACHE PATH "objcopy")
 set (CMAKE_OBJDUMP      ${RPI_PREFIX}-objdump      CACHE PATH "objdump")
 set (CMAKE_RANLIB       ${RPI_PREFIX}-ranlib       CACHE PATH "ranlib")
-
-# specify the system root
-if (IN_TRY_COMPILE)
-    set (RPI_SYSROOT $ENV{RPI_SYSROOT})
-else ()
-    if (NOT RPI_SYSROOT AND DEFINED ENV{RPI_SYSROOT})
-        file (TO_CMAKE_PATH $ENV{RPI_SYSROOT} RPI_SYSROOT)
-    endif ()
-    if (NOT EXISTS ${RPI_SYSROOT})
-        message (FATAL_ERROR "Could not find Raspberry Pi system root. "
-            "Use RPI_SYSROOT environment variable or build option to specify the location of system root.")
-    endif ()
-    set (RPI_SYSROOT ${RPI_SYSROOT} CACHE PATH "Path to Raspberry Pi system root (RPI cross-compiling build only)")
-endif ()
-set (CMAKE_SYSROOT ${RPI_SYSROOT})
-
-# only search libraries and headers in the target directories
-set (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set (CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set (CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 # Workaround try_compile() limitation where it cannot yet see cache variables during initial configuration
 if (NOT IN_TRY_COMPILE)

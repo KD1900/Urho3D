@@ -22,17 +22,18 @@
 
 get_property (IN_TRY_COMPILE GLOBAL PROPERTY IN_TRY_COMPILE)
 
-# Save the initial values of CC and CXX environment variables
+# Prevent critical variables from changing after the initial configuration
 if (CMAKE_CROSSCOMPILING)
+    set (SAVED_MINGW_SYSROOT ${MINGW_SYSROOT} CACHE INTERNAL "Initial value for MINGW_SYSROOT")
+    set (SAVED_MINGW_PREFIX ${MINGW_PREFIX} CACHE INTERNAL "Initial value for MINGW_PREFIX")
+    # Save the initial values of CC and CXX environment variables
     set (SAVED_CC $ENV{CC} CACHE INTERNAL "Initial value for CC")
     set (SAVED_CXX $ENV{CXX} CACHE INTERNAL "Initial value for CXX")
-    set (SAVED_MINGW_PREFIX ${MINGW_PREFIX} CACHE INTERNAL "Initial value for MINGW_PREFIX")
-    set (SAVED_MINGW_SYSROOT ${MINGW_SYSROOT} CACHE INTERNAL "Initial value for MINGW_SYSROOT")
     return ()
-elseif (NOT IN_TRY_COMPILE AND ((SAVED_MINGW_PREFIX AND NOT SAVED_MINGW_PREFIX STREQUAL MINGW_PREFIX) OR (SAVED_MINGW_SYSROOT AND NOT SAVED_MINGW_SYSROOT STREQUAL MINGW_SYSROOT)))
-    set (MINGW_PREFIX ${SAVED_MINGW_PREFIX} CACHE STRING "Prefix path to MinGW cross-compiler tools (MinGW cross-compiling build only)" FORCE)
+elseif (NOT IN_TRY_COMPILE AND ((SAVED_MINGW_SYSROOT AND NOT SAVED_MINGW_SYSROOT STREQUAL MINGW_SYSROOT) OR (SAVED_MINGW_PREFIX AND NOT SAVED_MINGW_PREFIX STREQUAL MINGW_PREFIX)))
     set (MINGW_SYSROOT ${SAVED_MINGW_SYSROOT} CACHE PATH "Path to MinGW system root (MinGW only); should only be used when the system root could not be auto-detected" FORCE)
-    message (FATAL_ERROR "MINGW_PREFIX and/or MINGW_SYSROOT cannot be changed after the initial configuration/generation. "
+    set (MINGW_PREFIX ${SAVED_MINGW_PREFIX} CACHE STRING "Prefix path to MinGW cross-compiler tools (MinGW cross-compiling build only)" FORCE)
+    message (FATAL_ERROR "MINGW_SYSROOT and MINGW_PREFIX cannot be changed after the initial configuration/generation. "
         "If you wish to change that then the build tree would have to be regenerated from scratch. Auto reverting to its initial value.")
 endif ()
 
@@ -41,24 +42,24 @@ if (CMAKE_TOOLCHAIN_FILE)
     mark_as_advanced (CMAKE_TOOLCHAIN_FILE)
 endif ()
 
-# this one is important
+# This one is important
 set (CMAKE_SYSTEM_NAME Windows)
-# this one not so much
+# This one not so much
 set (CMAKE_SYSTEM_PROCESSOR x86)
 set (CMAKE_SYSTEM_VERSION 1)
 
-# specify the cross compiler
+# Cross compiler tools
 if (IN_TRY_COMMPILE)
     set (MINGW_PREFIX $ENV{MINGW_PREFIX})
 else ()
     if (NOT MINGW_PREFIX AND DEFINED ENV{MINGW_PREFIX})
         file (TO_CMAKE_PATH $ENV{MINGW_PREFIX} MINGW_PREFIX)
     endif ()
+    set (MINGW_PREFIX ${MINGW_PREFIX} CACHE STRING "Prefix path to MinGW cross-compiler tools (MinGW cross-compiling build only)")
     if (NOT EXISTS ${MINGW_PREFIX}-gcc)
         message (FATAL_ERROR "Could not find MinGW cross compilation tool. "
             "Use MINGW_PREFIX environment variable or build option to specify the location of the toolchain.")
     endif ()
-    set (MINGW_PREFIX ${MINGW_PREFIX} CACHE STRING "Prefix path to MinGW cross-compiler tools (MinGW cross-compiling build only)")
 endif ()
 if (IN_TRY_COMPILE)
     set (MINGW_COMPILER_PREFIX $ENV{MINGW_COMPILER_PREFIX})
@@ -103,7 +104,7 @@ set (CMAKE_OBJDUMP      ${MINGW_PREFIX}-objdump      CACHE PATH "objdump")
 set (CMAKE_RANLIB       ${MINGW_PREFIX}-ranlib       CACHE PATH "ranlib")
 set (CMAKE_RC_COMPILER  ${MINGW_PREFIX}-windres      CACHE PATH "RC compiler")
 
-# specify the system root
+# System root
 if (IN_TRY_COMPILE)
     set (MINGW_SYSROOT $ENV{MINGW_SYSROOT})
 else ()
@@ -117,16 +118,15 @@ else ()
             string (REPLACE "\\ " " " MINGW_SYSROOT "${MINGW_SYSROOT}")
             execute_process (COMMAND ${CMAKE_COMMAND} -E remove find_mingw_sysroot_output)
         endif ()
-        if (NOT EXISTS ${MINGW_SYSROOT})
-            message (FATAL_ERROR "Could not find MinGW system root. "
-                "Use MINGW_SYSROOT environment variable or build option to specify the location of system root.")
-        endif ()
     endif ()
     set (MINGW_SYSROOT ${MINGW_SYSROOT} CACHE PATH "Path to MinGW system root (MinGW only); should only be used when the system root could not be auto-detected")
+    if (NOT EXISTS ${MINGW_SYSROOT})
+        message (FATAL_ERROR "Could not find MinGW system root. "
+                "Use MINGW_SYSROOT environment variable or build option to specify the location of system root.")
+    endif ()
 endif ()
 set (CMAKE_FIND_ROOT_PATH ${MINGW_SYSROOT})     # Intentionally do not use CMAKE_SYSROOT because it does not work for MinGW compiler toolchain
-
-# only search libraries and headers in the target directories
+# Only search libraries and headers in sysroot
 set (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set (CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set (CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

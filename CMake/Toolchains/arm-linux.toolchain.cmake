@@ -22,17 +22,18 @@
 
 get_property (IN_TRY_COMPILE GLOBAL PROPERTY IN_TRY_COMPILE)
 
-# Save the initial values of CC and CXX environment variables
+# Prevent critical variables from changing after the initial configuration
 if (CMAKE_CROSSCOMPILING)
+    set (SAVED_ARM_SYSROOT ${ARM_SYSROOT} CACHE INTERNAL "Initial value for ARM_SYSROOT")
+    set (SAVED_ARM_PREFIX ${ARM_PREFIX} CACHE INTERNAL "Initial value for ARM_PREFIX")
+    # Save the initial values of CC and CXX environment variables
     set (SAVED_CC $ENV{CC} CACHE INTERNAL "Initial value for CC")
     set (SAVED_CXX $ENV{CXX} CACHE INTERNAL "Initial value for CXX")
-    set (SAVED_ARM_PREFIX ${ARM_PREFIX} CACHE INTERNAL "Initial value for ARM_PREFIX")
-    set (SAVED_ARM_SYSROOT ${ARM_SYSROOT} CACHE INTERNAL "Initial value for ARM_SYSROOT")
     return ()
-elseif (NOT IN_TRY_COMPILE AND ((SAVED_ARM_PREFIX AND NOT SAVED_ARM_PREFIX STREQUAL ARM_PREFIX) OR (SAVED_ARM_SYSROOT AND NOT SAVED_ARM_SYSROOT STREQUAL ARM_SYSROOT)))
+elseif (NOT IN_TRY_COMPILE AND ((SAVED_ARM_SYSROOT AND NOT SAVED_ARM_SYSROOT STREQUAL ARM_SYSROOT) OR (SAVED_ARM_PREFIX AND NOT SAVED_ARM_PREFIX STREQUAL ARM_PREFIX)))
+    set (ARM_SYSROOT ${SAVED_ARM_SYSROOT} CACHE PATH "Path to ARM system root (Linux on ARM cross-compiling build only)" FORCE)
     set (ARM_PREFIX ${SAVED_ARM_PREFIX} CACHE STRING "Prefix path to ARM cross-compiler tools (Linux on ARM cross-compiling build only)" FORCE)
-    set (ARM_SYSROOT ${SAVED_ARM_SYSROOT} CACHE PATH "Path to ARM system root (Linux on ARM cross-compiling build only)")
-    message (FATAL_ERROR "ARM_PREFIX and/or ARM_SYSROOT cannot be changed after the initial configuration/generation. "
+    message (FATAL_ERROR "ARM_SYSROOT and ARM_PREFIX cannot be changed after the initial configuration/generation. "
         "If you wish to change that then the build tree would have to be regenerated from scratch. Auto reverting to its initial value.")
 endif ()
 
@@ -41,24 +42,43 @@ if (CMAKE_TOOLCHAIN_FILE)
     mark_as_advanced (CMAKE_TOOLCHAIN_FILE)
 endif ()
 
-# this one is important
+# This one is important
 set (CMAKE_SYSTEM_NAME Linux)
-# this one not so much
+# This one not so much
 set (CMAKE_SYSTEM_PROCESSOR arm)
 set (CMAKE_SYSTEM_VERSION 1)
 
-# specify the cross compiler
+# System root
+if (IN_TRY_COMPILE)
+    set (ARM_SYSROOT $ENV{ARM_SYSROOT})
+else ()
+    if (NOT ARM_SYSROOT AND DEFINED ENV{ARM_SYSROOT})
+        file (TO_CMAKE_PATH $ENV{ARM_SYSROOT} ARM_SYSROOT)
+    endif ()
+    set (ARM_SYSROOT ${ARM_SYSROOT} CACHE PATH "Path to ARM system root (Linux on ARM cross-compiling build only)")
+    if (NOT EXISTS ${ARM_SYSROOT})
+        message (FATAL_ERROR "Could not find ARM system root. "
+            "Use ARM_SYSROOT environment variable or build option to specify the location of system root.")
+    endif ()
+endif ()
+set (CMAKE_SYSROOT ${ARM_SYSROOT})
+# Only search libraries and headers in sysroot
+set (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set (CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set (CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+# Cross compiler tools
 if (IN_TRY_COMPILE)
     set (ARM_PREFIX $ENV{ARM_PREFIX})
 else ()
     if (NOT ARM_PREFIX AND DEFINED ENV{ARM_PREFIX})
         file (TO_CMAKE_PATH $ENV{ARM_PREFIX} ARM_PREFIX)
     endif ()
+    set (ARM_PREFIX ${ARM_PREFIX} CACHE STRING "Prefix path to ARM cross-compiler tools (Linux on ARM cross-compiling build only)")
     if (NOT EXISTS ${ARM_PREFIX}-gcc)
         message (FATAL_ERROR "Could not find ARM cross compilation tool. "
             "Use ARM_PREFIX environment variable or build option to specify the location of the toolchain.")
     endif ()
-    set (ARM_PREFIX ${ARM_PREFIX} CACHE STRING "Prefix path to ARM cross-compiler tools (Linux on ARM cross-compiling build only)")
 endif ()
 if (IN_TRY_COMPILE)
     set (ARM_COMPILER_PREFIX $ENV{ARM_COMPILER_PREFIX})
@@ -101,26 +121,6 @@ set (CMAKE_NM           ${ARM_PREFIX}-nm           CACHE PATH "nm")
 set (CMAKE_OBJCOPY      ${ARM_PREFIX}-objcopy      CACHE PATH "objcopy")
 set (CMAKE_OBJDUMP      ${ARM_PREFIX}-objdump      CACHE PATH "objdump")
 set (CMAKE_RANLIB       ${ARM_PREFIX}-ranlib       CACHE PATH "ranlib")
-
-# specify the system root
-if (IN_TRY_COMPILE)
-    set (ARM_SYSROOT $ENV{ARM_SYSROOT})
-else ()
-    if (NOT ARM_SYSROOT AND DEFINED ENV{ARM_SYSROOT})
-        file (TO_CMAKE_PATH $ENV{ARM_SYSROOT} ARM_SYSROOT)
-    endif ()
-    if (NOT EXISTS ${ARM_SYSROOT})
-        message (FATAL_ERROR "Could not find ARM system root. "
-            "Use ARM_SYSROOT environment variable or build option to specify the location of system root.")
-    endif ()
-    set (ARM_SYSROOT ${ARM_SYSROOT} CACHE PATH "Path to ARM system root (Linux on ARM cross-compiling build only)")
-endif ()
-set (CMAKE_SYSROOT ${ARM_SYSROOT})
-
-# only search libraries and headers in the target directories
-set (CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set (CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set (CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 # Workaround try_compile() limitation where it cannot yet see cache variables during initial configuration
 if (NOT IN_TRY_COMPILE)
